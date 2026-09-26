@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#07111f">
+<title>Pothole AI Pune — Drive Mode</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f4f7fb;color:#152033;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+header{background:#07111f;color:#fff;padding:22px 18px;border-radius:0 0 24px 24px}
+h1{margin:0;font-size:24px}header p{margin:5px 0 0;opacity:.75}
+main{max-width:650px;margin:auto;padding:16px}.card{background:#fff;border-radius:18px;padding:16px;margin-bottom:14px;box-shadow:0 3px 14px #0001}
+.status{display:flex;gap:10px;align-items:center;font-weight:700}.dot{width:12px;height:12px;border-radius:50%;background:#9aa4b2}.dot.on{background:#13a05a}
+button{width:100%;border:0;border-radius:13px;padding:15px;margin-top:10px;font-size:16px;font-weight:750;background:#1769e0;color:white}
+button.stop{background:#c62828}button.secondary{background:#e8edf5;color:#182235}
+.metric{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}.metric div{background:#f4f6fa;border-radius:13px;padding:12px}
+.big{font-size:22px;font-weight:800}.small{font-size:12px;color:#667085}
+video{width:100%;border-radius:15px;background:#05090f;margin-top:12px;max-height:330px;object-fit:cover}
+.alert{background:#fff3e5;border-left:5px solid #f08a24;padding:12px;border-radius:10px;margin-top:10px}
+.report{border:1px solid #e1e6ee;border-radius:12px;padding:11px;margin-top:8px}
+.badge{display:inline-block;padding:4px 8px;border-radius:15px;background:#ffe5e5;color:#9b0000;font-weight:700}
+</style>
+</head>
+<body>
+<header>
+<h1>🕳️ Pothole AI Pune</h1>
+<p>Automatic Drive Mode • Prototype</p>
+</header>
+<main>
+<div class="card">
+  <div class="status"><span id="dot" class="dot"></span><span id="driveStatus">Drive stopped</span></div>
+  <button id="startBtn" onclick="startDrive()">🚗 Start Drive</button>
+  <button id="stopBtn" class="stop" style="display:none" onclick="stopDrive()">⛔ Stop Drive</button>
+  <p class="small">For safety, mount the phone securely and do not interact with it while driving.</p>
+</div>
+
+<div class="card">
+  <h3>Live telemetry</h3>
+  <div class="metric">
+    <div><div class="small">GPS</div><div id="gps" class="big">—</div></div>
+    <div><div class="small">Speed</div><div id="speed" class="big">—</div></div>
+    <div><div class="small">GPS points</div><div id="points" class="big">0</div></div>
+    <div><div class="small">Candidates</div><div id="count" class="big">0</div></div>
+  </div>
+</div>
+
+<div class="card">
+  <h3>📷 Road camera</h3>
+  <video id="camera" autoplay playsinline muted></video>
+  <canvas id="frame" style="display:none"></canvas>
+  <div id="cameraMsg" class="small">Camera starts when Drive Mode begins.</div>
+</div>
+
+<div class="card">
+  <h3>🛰️ Detection engine</h3>
+  <p class="small">The production version will run a trained pothole model on camera frames. This prototype uses a simulated detection event so the complete Drive → GPS → Report workflow can be tested.</p>
+  <div id="lastEvent" class="small">No detection yet.</div>
+</div>
+
+<div class="card">
+  <h3>📋 Drive reports</h3>
+  <div id="reports"><p class="small">No candidates recorded.</p></div>
+  <button class="secondary" onclick="clearReports()">Clear reports</button>
+</div>
+</main>
+
+<script>
+let stream=null, watchId=null, drive=false, points=0, candidates=0, lastLat=null,lastLon=null,lastTime=0;
+let reports=JSON.parse(localStorage.getItem('drivePotholes')||'[]');
+const $=id=>document.getElementById(id);
+
+async function startDrive(){
+  try{
+    if(!navigator.geolocation) throw new Error('GPS unavailable');
+    if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia)
+      throw new Error('Camera requires HTTPS or a supported secure page.');
+
+    stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}},audio:false});
+    $('camera').srcObject=stream;
+    drive=true;
+    $('dot').classList.add('on');
+    $('driveStatus').textContent='Drive active';
+    $('startBtn').style.display='none'; $('stopBtn').style.display='block';
+    $('cameraMsg').textContent='Camera active. GPS tracking started.';
+    watchId=navigator.geolocation.watchPosition(onPosition,onGeoError,
+      {enableHighAccuracy:true,maximumAge:1000,timeout:10000});
+    // Prototype event every ~18 seconds, only when GPS is available.
+    window.detectTimer=setInterval(simulatedDetection,18000);
+  }catch(e){
+    $('cameraMsg').textContent='Start failed: '+e.message;
+  }
+}
+
+function onPosition(pos){
+  if(!drive)return;
+  points++;
+  lastLat=pos.coords.latitude; lastLon=pos.coords.longitude; lastTime=Date.now();
+  const speedKmh=(pos.coords.speed!=null && pos.coords.speed>=0)?pos.coords.speed*3.6:null;
+  $('gps').textContent=lastLat.toFixed(5)+', '+lastLon.toFixed(5);
+  $('speed').textContent=speedKmh==null?'—':speedKmh.toFixed(0)+' km/h';
+  $('points').textContent=points;
+}
+
+function onGeoError(err){ $('gps').textContent='GPS error'; }
+
+function simulatedDetection(){
+  if(!drive || lastLat===null)return;
+  // Demonstration only. Replace this function with real camera-model inference.
+  candidates++;
+  const confidence=(89+Math.random()*8).toFixed(1);
+  const severity=confidence>94?'HIGH':confidence>91?'MEDIUM':'LOW';
+  const r={
+    id:'PH-'+Date.now().toString().slice(-7),
+    lat:+lastLat.toFixed(6),lon:+lastLon.toFixed(6),
+    confidence,severity,time:new Date().toLocaleString()
+  };
+  reports.unshift(r); reports=reports.slice(0,100);
+  localStorage.setItem('drivePotholes',JSON.stringify(reports));
+  $('count').textContent=candidates;
+  $('lastEvent').innerHTML='<div class="alert">🕳️ Candidate pothole detected<br><b>'+r.id+'</b> · '+severity+' · '+confidence+'% confidence<br>📍 '+r.lat+', '+r.lon+'</div>';
+  renderReports();
+}
+
+function stopDrive(){
+  drive=false;
+  if(watchId!==null) navigator.geolocation.clearWatch(watchId);
+  clearInterval(window.detectTimer);
+  watchId=null;
+  if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;}
+  $('camera').srcObject=null;
+  $('dot').classList.remove('on');
+  $('driveStatus').textContent='Drive stopped';
+  $('startBtn').style.display='block'; $('stopBtn').style.display='none';
+  $('cameraMsg').textContent='Drive stopped.';
+}
+
+function renderReports(){
+  if(!reports.length){$('reports').innerHTML='<p class="small">No candidates recorded.</p>';return;}
+  $('reports').innerHTML=reports.map(r=>`<div class="report"><b>${r.id}</b> <span class="badge">${r.severity}</span><br><span class="small">${r.lat}, ${r.lon}<br>${r.time} · ${r.confidence}%</span></div>`).join('');
+}
+function clearReports(){reports=[];localStorage.removeItem('drivePotholes');candidates=0;$('count').textContent='0';renderReports();}
+renderReports();
+</script>
+</body>
+</html>
