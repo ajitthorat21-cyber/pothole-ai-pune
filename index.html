@@ -4,13 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#07111f">
-<title>Pothole AI Pune — Drive + Motion Sensor</title>
+<title>Pothole AI Pune — Real AI v3</title>
+<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/ort.min.js"></script>
 <style>
 *{box-sizing:border-box}
 body{margin:0;background:#f4f7fb;color:#152033;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
 header{background:#07111f;color:#fff;padding:22px 18px;border-radius:0 0 24px 24px}
 h1{margin:0;font-size:24px} header p{margin:5px 0 0;opacity:.75}
-main{max-width:680px;margin:auto;padding:16px}
+main{max-width:700px;margin:auto;padding:16px}
 .card{background:#fff;border-radius:18px;padding:16px;margin-bottom:14px;box-shadow:0 3px 14px #0001}
 .status{display:flex;gap:10px;align-items:center;font-weight:700}
 .dot{width:12px;height:12px;border-radius:50%;background:#9aa4b2}.dot.on{background:#13a05a}
@@ -18,21 +19,27 @@ button{width:100%;border:0;border-radius:13px;padding:15px;margin-top:10px;font-
 button.stop{background:#c62828} button.secondary{background:#e8edf5;color:#182235}
 .metric{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
 .metric div{background:#f4f6fa;border-radius:13px;padding:12px}
-.big{font-size:21px;font-weight:800}.small{font-size:12px;color:#667085}
-video{width:100%;border-radius:15px;background:#05090f;margin-top:12px;max-height:330px;object-fit:cover}
+.big{font-size:20px;font-weight:800}.small{font-size:12px;color:#667085}
+.cameraWrap{position:relative;margin-top:12px}
+video{width:100%;border-radius:15px;background:#05090f;display:block;max-height:360px;object-fit:cover}
+#overlay{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none}
 .alert{background:#fff3e5;border-left:5px solid #f08a24;padding:12px;border-radius:10px;margin-top:10px}
 .alert.red{background:#ffecec;border-left-color:#d92d20}
+.alert.green{background:#eaf8ef;border-left-color:#13a05a}
+.note{background:#eef5ff;border-radius:12px;padding:11px;font-size:13px;line-height:1.45}
 .report{border:1px solid #e1e6ee;border-radius:12px;padding:11px;margin-top:8px}
 .badge{display:inline-block;padding:4px 8px;border-radius:15px;background:#ffe5e5;color:#9b0000;font-weight:700}
+.badge.green{background:#dcf8e7;color:#087443}
 .good{color:#087443;font-weight:700}.warn{color:#b54708;font-weight:700}
 input[type=range]{width:100%}
-.note{background:#eef5ff;border-radius:12px;padding:11px;font-size:13px;line-height:1.45}
+.progress{height:8px;background:#e8edf5;border-radius:8px;overflow:hidden;margin-top:8px}
+.bar{height:100%;width:0;background:#1769e0;transition:width .2s}
 </style>
 </head>
 <body>
 <header>
 <h1>🕳️ Pothole AI Pune</h1>
-<p>Drive Mode • Camera + GPS + Motion Sensor Prototype</p>
+<p>Real Camera AI • GPS • Accelerometer • Gyroscope</p>
 </header>
 <main>
 
@@ -40,283 +47,334 @@ input[type=range]{width:100%}
   <div class="status"><span id="dot" class="dot"></span><span id="driveStatus">Drive stopped</span></div>
   <button id="startBtn" onclick="startDrive()">🚗 Start Drive</button>
   <button id="stopBtn" class="stop" style="display:none" onclick="stopDrive()">⛔ Stop Drive</button>
-  <p class="small">Mount the phone securely. Do not interact with the phone while driving.</p>
+  <p class="small">Securely mount the phone. Do not interact with it while driving.</p>
 </div>
 
 <div class="card">
-  <h3>📡 Live telemetry</h3>
-  <div class="metric">
-    <div><div class="small">GPS</div><div id="gps" class="big">—</div></div>
-    <div><div class="small">Speed</div><div id="speed" class="big">—</div></div>
-    <div><div class="small">Motion sensor</div><div id="sensorStatus" class="big">Not started</div></div>
-    <div><div class="small">Acceleration</div><div id="accel" class="big">—</div></div>
-    <div><div class="small">Gyroscope</div><div id="gyro" class="big">—</div></div>
-    <div><div class="small">Impact candidates</div><div id="impactCount" class="big">0</div></div>
-    <div><div class="small">GPS points</div><div id="points" class="big">0</div></div>
-    <div><div class="small">Reports</div><div id="count" class="big">0</div></div>
-  </div>
+<h3>🧠 AI model</h3>
+<div id="modelStatus">Loading real pothole model…</div>
+<div class="progress"><div id="modelBar" class="bar"></div></div>
+<p class="small">YOLO11n pothole model. It runs in the browser on the phone; no fake detections are generated.</p>
 </div>
 
 <div class="card">
-  <h3>⚙️ Motion sensitivity</h3>
-  <p class="small">Higher threshold = fewer impact candidates. Start around 12 m/s² for testing.</p>
-  <input id="threshold" type="range" min="8" max="22" step="0.5" value="12">
-  <div><b id="thresholdValue">12.0 m/s²</b></div>
+<h3>📡 Live telemetry</h3>
+<div class="metric">
+<div><div class="small">GPS</div><div id="gps" class="big">—</div></div>
+<div><div class="small">Speed</div><div id="speed" class="big">—</div></div>
+<div><div class="small">Motion sensor</div><div id="sensorStatus" class="big">Not started</div></div>
+<div><div class="small">Acceleration</div><div id="accel" class="big">—</div></div>
+<div><div class="small">Gyroscope</div><div id="gyro" class="big">—</div></div>
+<div><div class="small">AI pothole candidates</div><div id="aiCount" class="big">0</div></div>
+<div><div class="small">Confirmed events</div><div id="confirmedCount" class="big">0</div></div>
+<div><div class="small">GPS points</div><div id="points" class="big">0</div></div>
+</div>
 </div>
 
 <div class="card">
-  <h3>📷 Road camera</h3>
-  <video id="camera" autoplay playsinline muted></video>
-  <div id="cameraMsg" class="small">Camera starts when Drive Mode begins.</div>
+<h3>⚙️ AI confidence</h3>
+<input id="threshold" type="range" min="0.35" max="0.90" step="0.01" value="0.55">
+<div><b id="thresholdValue">55%</b> minimum camera confidence</div>
+<p class="small">For the first road test, leave this at 55%. We can tune it after collecting real Pune road samples.</p>
 </div>
 
 <div class="card">
-  <h3>🧠 Detection engine</h3>
-  <div class="note">
-    <b>Current test logic:</b> motion-sensor spikes create an <b>impact candidate</b>. The camera detector is still simulated.
-    In the production app, an AI camera detection will be combined with motion + GPS to confirm a pothole.
-  </div>
-  <div id="lastEvent" class="small" style="margin-top:10px">No detection yet.</div>
+<h3>📷 Road camera + AI</h3>
+<div class="cameraWrap">
+<video id="camera" autoplay playsinline muted></video>
+<canvas id="overlay"></canvas>
+</div>
+<div id="cameraMsg" class="small">Camera starts when Drive Mode begins.</div>
+<div id="lastEvent"></div>
 </div>
 
 <div class="card">
-  <h3>📋 Drive reports</h3>
-  <div id="reports"><p class="small">No candidates recorded.</p></div>
-  <button class="secondary" onclick="clearReports()">Clear reports</button>
+<h3>📋 Detection reports</h3>
+<div class="note">A camera detection is a <b>candidate</b>. A report becomes <b>confirmed</b> only when a camera candidate is close in time to a motion impact while the vehicle is moving. This reduces false positives from visual-only or sensor-only events.</div>
+<div id="reports"><p class="small">No detections yet.</p></div>
+<button class="secondary" onclick="clearReports()">Clear reports</button>
+</div>
+
+<div class="card">
+<h3>ℹ️ Important</h3>
+<p class="small">This is the first real-AI field-test version, not a production-grade detector. The model is a publicly available community model and has not been calibrated specifically for Pune/PCMC roads. Treat detections as research/test results until we collect local samples and evaluate them.</p>
 </div>
 
 </main>
 
 <script>
-let stream=null, watchId=null, drive=false, points=0, candidates=0, impacts=0;
-let lastLat=null,lastLon=null,lastSpeed=null,lastImpactAt=0;
-let motionAttached=false, motionEvents=0, peakAccel=0;
-let reports=JSON.parse(localStorage.getItem('drivePotholesMotion')||'[]');
+const MODEL_URL="https://huggingface.co/tahaUgan/pothole-yolo11n/resolve/main/pothole2v_320.onnx";
+const INPUT=320;
+const MODEL_CLASSES=["Pothole","Sewage-Manhole"];
+
+let session=null, stream=null, drive=false, watchId=null, raf=0, inferenceBusy=false;
+let lastLat=null,lastLon=null,lastSpeed=null,points=0;
+let lastImpactAt=0, lastCameraAt=0, cameraCandidates=0, confirmed=0;
+let recentCamera=[], reports=JSON.parse(localStorage.getItem("potholeRealAIv3")||"[]");
+let motionAttached=false;
 
 const $=id=>document.getElementById(id);
-const G=9.80665;
 
-$('threshold').addEventListener('input', e=>{
-  $('thresholdValue').textContent=Number(e.target.value).toFixed(1)+' m/s²';
+$("threshold").addEventListener("input",e=>{
+  $("thresholdValue").textContent=Math.round(Number(e.target.value)*100)+"%";
 });
 
-function setSensorStatus(text, cls=''){
-  $('sensorStatus').textContent=text;
-  $('sensorStatus').className='big '+cls;
-}
+function setModelStatus(t,cls=""){ $("modelStatus").textContent=t; $("modelStatus").className=cls; }
 
-async function requestMotionPermission(){
-  if(!('DeviceMotionEvent' in window)){
-    setSensorStatus('Unavailable','warn');
-    return false;
-  }
+async function loadModel(){
   try{
-    if(typeof DeviceMotionEvent.requestPermission==='function'){
-      const result=await DeviceMotionEvent.requestPermission();
-      if(result!=='granted'){
-        setSensorStatus('Denied','warn');
-        return false;
-      }
+    ort.env.wasm.wasmPaths="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/";
+    $("modelBar").style.width="25%";
+    session=await ort.InferenceSession.create(MODEL_URL,{
+      executionProviders:["wasm"],
+      graphOptimizationLevel:"all"
+    });
+    $("modelBar").style.width="100%";
+    setModelStatus("✅ Real pothole AI model loaded","good");
+  }catch(e){
+    console.error(e);
+    setModelStatus("❌ Model failed to load: "+e.message,"warn");
+  }
+}
+loadModel();
+
+async function requestMotion(){
+  if(!("DeviceMotionEvent" in window)){ $("sensorStatus").textContent="Unavailable"; return false; }
+  try{
+    if(typeof DeviceMotionEvent.requestPermission==="function"){
+      const r=await DeviceMotionEvent.requestPermission();
+      if(r!=="granted"){ $("sensorStatus").textContent="Denied"; return false; }
     }
     if(!motionAttached){
-      window.addEventListener('devicemotion', onMotion, {passive:true});
+      window.addEventListener("devicemotion",onMotion,{passive:true});
       motionAttached=true;
     }
-    setSensorStatus('Active','good');
+    $("sensorStatus").textContent="Active";
+    $("sensorStatus").className="big good";
     return true;
   }catch(e){
-    setSensorStatus('Error','warn');
-    console.error(e);
+    $("sensorStatus").textContent="Error";
     return false;
   }
 }
 
 function onMotion(e){
   if(!drive)return;
-  motionEvents++;
-
   const a=e.acceleration;
   const ag=e.accelerationIncludingGravity;
-  let x,y,z,usingGravity=false;
-
-  if(a && [a.x,a.y,a.z].every(v=>typeof v==='number')){
-    x=a.x; y=a.y; z=a.z;
-  }else if(ag && [ag.x,ag.y,ag.z].every(v=>typeof v==='number')){
-    x=ag.x; y=ag.y; z=ag.z; usingGravity=true;
-  }else{
-    return;
-  }
-
+  let x,y,z,gravity=false;
+  if(a && [a.x,a.y,a.z].every(v=>typeof v==="number")){x=a.x;y=a.y;z=a.z;}
+  else if(ag && [ag.x,ag.y,ag.z].every(v=>typeof v==="number")){x=ag.x;y=ag.y;z=ag.z;gravity=true;}
+  else return;
   let mag=Math.sqrt(x*x+y*y+z*z);
-  // If only gravity-inclusive data is available, approximate user acceleration.
-  if(usingGravity) mag=Math.abs(mag-G);
+  if(gravity) mag=Math.abs(mag-9.80665);
+  if(Number.isFinite(mag)) $("accel").textContent=mag.toFixed(1)+" m/s²";
 
-  if(Number.isFinite(mag)){
-    peakAccel=Math.max(peakAccel,mag);
-    $('accel').textContent=mag.toFixed(1)+' m/s²';
+  if(e.rotationRate){
+    const r=e.rotationRate;
+    const rot=Math.sqrt((r.alpha||0)**2+(r.beta||0)**2+(r.gamma||0)**2);
+    $("gyro").textContent=rot.toFixed(0)+" °/s";
   }
 
-  const r=e.rotationRate;
-  if(r){
-    const rx=Number(r.alpha)||0, ry=Number(r.beta)||0, rz=Number(r.gamma)||0;
-    const rot=Math.sqrt(rx*rx+ry*ry+rz*rz);
-    $('gyro').textContent=rot.toFixed(0)+' °/s';
-  }
-
-  const threshold=Number($('threshold').value);
   const now=Date.now();
-  // Require a short cooldown so one road impact does not create many reports.
-  if(mag>=threshold && now-lastImpactAt>1800){
-    // GPS speed helps suppress bumps while parked. If speed is unknown, keep it as a test candidate.
-    if(lastSpeed===null || lastSpeed>=5){
-      lastImpactAt=now;
-      impacts++;
-      $('impactCount').textContent=impacts;
-      recordImpact(mag);
-    }
+  if(mag>=12 && (lastSpeed===null || lastSpeed>=5) && now-lastImpactAt>1800){
+    lastImpactAt=now;
+    confirmNearestCamera(now,mag);
   }
 }
 
-function recordImpact(mag){
-  if(lastLat===null){
-    $('lastEvent').innerHTML='<div class="alert">⚠️ Impact candidate detected, but GPS position is not available yet.</div>';
-    return;
+function confirmNearestCamera(now,mag){
+  const windowMs=3500;
+  let best=null,bestDt=Infinity;
+  for(const c of recentCamera){
+    const dt=Math.abs(now-c.time);
+    if(dt<windowMs && dt<bestDt){best=c;bestDt=dt;}
   }
-
-  const speedText=lastSpeed==null?'speed unavailable':lastSpeed.toFixed(0)+' km/h';
-  const r={
-    id:'IM-'+Date.now().toString().slice(-7),
-    type:'motion-impact-candidate',
-    lat:+lastLat.toFixed(6),
-    lon:+lastLon.toFixed(6),
-    speed:lastSpeed==null?null:+lastSpeed.toFixed(1),
-    acceleration:+mag.toFixed(1),
-    threshold:+Number($('threshold').value).toFixed(1),
-    time:new Date().toLocaleString()
-  };
-
-  reports.unshift(r);
-  reports=reports.slice(0,100);
-  candidates=reports.length;
-  localStorage.setItem('drivePotholesMotion',JSON.stringify(reports));
-
-  $('count').textContent=candidates;
-  $('lastEvent').innerHTML=
-    '<div class="alert red">💥 Motion impact candidate<br><b>'+r.id+'</b> · '+r.acceleration+' m/s²<br>📍 '+r.lat+', '+r.lon+' · '+speedText+
-    '<br><span class="small">This is NOT yet a confirmed pothole.</span></div>';
-
-  renderReports();
+  if(best){
+    best.confirmed=true;
+    confirmed++;
+    $("confirmedCount").textContent=confirmed;
+    addReport({
+      id:"PH-"+Date.now().toString().slice(-7),
+      type:"confirmed",
+      lat:best.lat,lon:best.lon,
+      confidence:best.confidence,
+      acceleration:+mag.toFixed(1),
+      speed:lastSpeed==null?null:+lastSpeed.toFixed(1),
+      time:new Date().toLocaleString()
+    });
+    $("lastEvent").innerHTML='<div class="alert green">🕳️ <b>Confirmed pothole candidate</b><br>Camera + motion matched · '+Math.round(best.confidence*100)+'% camera confidence · '+mag.toFixed(1)+' m/s² impact</div>';
+  }else{
+    $("lastEvent").innerHTML='<div class="alert">💥 Motion impact detected, but no nearby camera pothole candidate. Not reported as a pothole.</div>';
+  }
 }
 
 function onPosition(pos){
   if(!drive)return;
   points++;
-  lastLat=pos.coords.latitude;
-  lastLon=pos.coords.longitude;
+  lastLat=pos.coords.latitude; lastLon=pos.coords.longitude;
   lastSpeed=(pos.coords.speed!=null && pos.coords.speed>=0)?pos.coords.speed*3.6:null;
+  $("gps").textContent=lastLat.toFixed(5)+", "+lastLon.toFixed(5);
+  $("speed").textContent=lastSpeed==null?"—":lastSpeed.toFixed(0)+" km/h";
+  $("points").textContent=points;
+}
+function geoError(){ $("gps").textContent="GPS error"; }
 
-  $('gps').textContent=lastLat.toFixed(5)+', '+lastLon.toFixed(5);
-  $('speed').textContent=lastSpeed==null?'—':lastSpeed.toFixed(0)+' km/h';
-  $('points').textContent=points;
+function preprocess(video){
+  const c=document.createElement("canvas"); c.width=INPUT;c.height=INPUT;
+  const ctx=c.getContext("2d",{willReadFrequently:true});
+  const vw=video.videoWidth,vh=video.videoHeight;
+  const scale=Math.max(INPUT/vw,INPUT/vh);
+  const sw=INPUT/scale,sh=INPUT/scale,sx=(vw-sw)/2,sy=(vh-sh)/2;
+  ctx.drawImage(video,sx,sy,sw,sh,0,0,INPUT,INPUT);
+  const d=ctx.getImageData(0,0,INPUT,INPUT).data;
+  const arr=new Float32Array(3*INPUT*INPUT);
+  let p=0;
+  for(let i=0;i<d.length;i+=4){
+    arr[p]=d[i]/255; arr[p+INPUT*INPUT]=d[i+1]/255; arr[p+2*INPUT*INPUT]=d[i+2]/255; p++;
+  }
+  return {tensor:new ort.Tensor("float32",arr,[1,3,INPUT,INPUT]),canvas:c};
 }
 
-function onGeoError(){ $('gps').textContent='GPS error'; }
+function sigmoid(x){return 1/(1+Math.exp(-x));}
+
+function nms(boxes,thr=0.45){
+  boxes.sort((a,b)=>b.score-a.score);
+  const keep=[];
+  while(boxes.length){
+    const a=boxes.shift(); keep.push(a);
+    boxes=boxes.filter(b=>{
+      const x1=Math.max(a.x1,b.x1),y1=Math.max(a.y1,b.y1);
+      const x2=Math.min(a.x2,b.x2),y2=Math.min(a.y2,b.y2);
+      const inter=Math.max(0,x2-x1)*Math.max(0,y2-y1);
+      const areaA=(a.x2-a.x1)*(a.y2-a.y1),areaB=(b.x2-b.x1)*(b.y2-b.y1);
+      const iou=inter/(areaA+areaB-inter+1e-9);
+      return iou<thr;
+    });
+  }
+  return keep;
+}
+
+function parseYOLO(output,frameW,frameH){
+  const data=output.data;
+  const dims=output.dims;
+  // YOLO11 ONNX commonly returns [1, 4+classes, N] for this model.
+  let C,N,transposed;
+  if(dims.length===3 && dims[1] < dims[2]){C=dims[1];N=dims[2];transposed=true;}
+  else {N=dims[1];C=dims[2];transposed=false;}
+  const boxes=[];
+  const confMin=Number($("threshold").value);
+  for(let i=0;i<N;i++){
+    let cx,cy,w,h;
+    if(transposed){cx=data[i];cy=data[N+i];w=data[2*N+i];h=data[3*N+i];}
+    else {const o=i*C;cx=data[o];cy=data[o+1];w=data[o+2];h=data[o+3];}
+    let best=-1,score=0;
+    for(let c=4;c<C;c++){
+      const v=transposed?data[c*N+i]:data[i*C+c];
+      if(v>score){score=v;best=c-4;}
+    }
+    // Some exports output logits; convert if needed.
+    if(score<0 || score>1) score=sigmoid(score);
+    if(best===0 && score>=confMin){
+      const x1=Math.max(0,(cx-w/2)/INPUT*frameW);
+      const y1=Math.max(0,(cy-h/2)/INPUT*frameH);
+      const x2=Math.min(frameW,(cx+w/2)/INPUT*frameW);
+      const y2=Math.min(frameH,(cy+h/2)/INPUT*frameH);
+      boxes.push({x1,y1,x2,y2,score,label:"Pothole"});
+    }
+  }
+  return nms(boxes);
+}
+
+function drawBoxes(boxes){
+  const v=$("camera"),c=$("overlay"),r=v.getBoundingClientRect();
+  const scaleX=r.width/v.videoWidth,scaleY=r.height/v.videoHeight;
+  c.width=r.width;c.height=r.height;
+  const ctx=c.getContext("2d");ctx.clearRect(0,0,c.width,c.height);
+  ctx.lineWidth=3;ctx.font="bold 15px system-ui";
+  boxes.forEach(b=>{
+    const x=b.x1*scaleX,y=b.y1*scaleY,w=(b.x2-b.x1)*scaleX,h=(b.y2-b.y1)*scaleY;
+    ctx.strokeStyle="#ff3b30";ctx.strokeRect(x,y,w,h);
+    ctx.fillStyle="#ff3b30";ctx.fillRect(x,y,Math.max(110,w),25);
+    ctx.fillStyle="#fff";ctx.fillText("Pothole "+Math.round(b.score*100)+"%",x+5,y+18);
+  });
+}
+
+async function infer(){
+  if(!drive || !session || inferenceBusy || !$("camera").videoWidth){raf=requestAnimationFrame(infer);return;}
+  inferenceBusy=true;
+  try{
+    const v=$("camera");
+    const prep=preprocess(v);
+    const inputName=session.inputNames[0];
+    const out=await session.run({[inputName]:prep.tensor});
+    const output=out[session.outputNames[0]];
+    const boxes=parseYOLO(output,v.videoWidth,v.videoHeight);
+    drawBoxes(boxes);
+    if(boxes.length){
+      const best=boxes[0];
+      cameraCandidates++;
+      $("aiCount").textContent=cameraCandidates;
+      const now=Date.now();
+      const candidate={time:now,lat:lastLat,lon:lastLon,confidence:best.score,confirmed:false};
+      recentCamera.unshift(candidate);
+      recentCamera=recentCamera.filter(x=>now-x.time<5000);
+      if(lastLat!=null){
+        $("lastEvent").innerHTML='<div class="alert">📷 <b>Real camera pothole candidate</b><br>'+Math.round(best.score*100)+'% confidence · GPS '+lastLat.toFixed(5)+', '+lastLon.toFixed(5)+'</div>';
+        addReport({
+          id:"AI-"+now.toString().slice(-7),type:"camera",
+          lat:+lastLat.toFixed(6),lon:+lastLon.toFixed(6),
+          confidence:+best.score.toFixed(3),time:new Date().toLocaleString()
+        });
+      }
+    }
+  }catch(e){
+    console.error(e);
+    $("cameraMsg").textContent="AI inference error: "+e.message;
+  }finally{
+    inferenceBusy=false;
+    raf=requestAnimationFrame(infer);
+  }
+}
+
+function addReport(r){
+  reports.unshift(r); reports=reports.slice(0,100);
+  localStorage.setItem("potholeRealAIv3",JSON.stringify(reports));
+  renderReports();
+}
+function renderReports(){
+  if(!reports.length){$("reports").innerHTML='<p class="small">No detections yet.</p>';return;}
+  $("reports").innerHTML=reports.map(r=>{
+    if(r.type==="confirmed") return `<div class="report"><b>${r.id}</b> <span class="badge green">CONFIRMED</span><br><span class="small">${r.lat}, ${r.lon}<br>${r.time} · camera ${Math.round(r.confidence*100)}% · impact ${r.acceleration} m/s²</span></div>`;
+    return `<div class="report"><b>${r.id}</b> <span class="badge">CAMERA</span><br><span class="small">${r.lat}, ${r.lon}<br>${r.time} · ${Math.round(r.confidence*100)}% confidence</span></div>`;
+  }).join("");
+}
+function clearReports(){reports=[];localStorage.removeItem("potholeRealAIv3");renderReports();}
 
 async function startDrive(){
   try{
-    if(!navigator.geolocation) throw new Error('GPS unavailable');
-    if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia)
-      throw new Error('Camera requires HTTPS or a supported secure page.');
-
-    const motionOK=await requestMotionPermission();
-
+    if(!session) throw new Error("AI model is still loading. Wait a few seconds and try again.");
+    const motionOK=await requestMotion();
     stream=await navigator.mediaDevices.getUserMedia({
-      video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}},
-      audio:false
+      video:{facingMode:{ideal:"environment"},width:{ideal:1280},height:{ideal:720}},audio:false
     });
-
-    $('camera').srcObject=stream;
+    $("camera").srcObject=stream;
     drive=true;
-    $('dot').classList.add('on');
-    $('driveStatus').textContent='Drive active';
-    $('startBtn').style.display='none';
-    $('stopBtn').style.display='block';
-    $('cameraMsg').textContent='Camera active. GPS tracking started. Motion sensor: '+(motionOK?'active':'unavailable')+'.';
-
-    watchId=navigator.geolocation.watchPosition(onPosition,onGeoError,
-      {enableHighAccuracy:true,maximumAge:1000,timeout:10000});
-
-    // Keep the previous workflow demo: simulated camera event every ~18 sec.
-    window.detectTimer=setInterval(simulatedCameraDetection,18000);
-  }catch(e){
-    $('cameraMsg').textContent='Start failed: '+e.message;
-  }
+    $("dot").classList.add("on");$("driveStatus").textContent="Drive active";
+    $("startBtn").style.display="none";$("stopBtn").style.display="block";
+    $("cameraMsg").textContent="Real AI inference running on camera frames. Motion sensor: "+(motionOK?"active":"unavailable")+".";
+    watchId=navigator.geolocation.watchPosition(onPosition,geoError,{enableHighAccuracy:true,maximumAge:1000,timeout:10000});
+    raf=requestAnimationFrame(infer);
+  }catch(e){$("cameraMsg").textContent="Start failed: "+e.message;}
 }
-
-function simulatedCameraDetection(){
-  if(!drive || lastLat===null)return;
-  const confidence=(89+Math.random()*8).toFixed(1);
-  const severity=confidence>94?'HIGH':confidence>91?'MEDIUM':'LOW';
-
-  const r={
-    id:'AI-'+Date.now().toString().slice(-7),
-    type:'simulated-camera-candidate',
-    lat:+lastLat.toFixed(6),lon:+lastLon.toFixed(6),
-    confidence,severity,time:new Date().toLocaleString()
-  };
-
-  reports.unshift(r);
-  reports=reports.slice(0,100);
-  candidates=reports.length;
-  localStorage.setItem('drivePotholesMotion',JSON.stringify(reports));
-  $('count').textContent=candidates;
-
-  $('lastEvent').innerHTML=
-    '<div class="alert">📷 Simulated camera candidate<br><b>'+r.id+'</b> · '+severity+' · '+confidence+'% confidence'+
-    '<br>📍 '+r.lat+', '+r.lon+'<br><span class="small">Camera AI is simulated in this prototype.</span></div>';
-
-  renderReports();
-}
-
 function stopDrive(){
   drive=false;
-  if(watchId!==null) navigator.geolocation.clearWatch(watchId);
-  if(window.detectTimer) clearInterval(window.detectTimer);
-  watchId=null;
-
+  if(watchId!==null)navigator.geolocation.clearWatch(watchId);
+  watchId=null;if(raf)cancelAnimationFrame(raf);
   if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;}
-  $('camera').srcObject=null;
-
-  $('dot').classList.remove('on');
-  $('driveStatus').textContent='Drive stopped';
-  $('startBtn').style.display='block';
-  $('stopBtn').style.display='none';
-  $('cameraMsg').textContent='Drive stopped.';
-  setSensorStatus(motionAttached?'Ready':'Not started');
-}
-
-function renderReports(){
-  if(!reports.length){
-    $('reports').innerHTML='<p class="small">No candidates recorded.</p>';
-    return;
-  }
-  $('reports').innerHTML=reports.map(r=>{
-    if(r.type==='motion-impact-candidate'){
-      return `<div class="report"><b>${r.id}</b> <span class="badge">IMPACT</span><br>
-      <span class="small">${r.lat}, ${r.lon}<br>${r.time} · ${r.acceleration} m/s² · ${r.speed==null?'speed —':r.speed+' km/h'}</span></div>`;
-    }
-    return `<div class="report"><b>${r.id}</b> <span class="badge">${r.severity}</span><br>
-      <span class="small">${r.lat}, ${r.lon}<br>${r.time} · ${r.confidence}% camera confidence</span></div>`;
-  }).join('');
-}
-
-function clearReports(){
-  reports=[];
-  localStorage.removeItem('drivePotholesMotion');
-  candidates=0; impacts=0;
-  $('count').textContent='0';
-  $('impactCount').textContent='0';
-  renderReports();
+  $("camera").srcObject=null;$("overlay").getContext("2d").clearRect(0,0,$("overlay").width,$("overlay").height);
+  $("dot").classList.remove("on");$("driveStatus").textContent="Drive stopped";
+  $("startBtn").style.display="block";$("stopBtn").style.display="none";
 }
 renderReports();
 </script>
